@@ -25,6 +25,7 @@
 var parameters = PluginManager.parameters('OTP');
 var WebSocket_IP = String(parameters['WebSocket_IP'] || "127.0.0.1");
 var WebSocket_Port = Number(parameters['WebSocket_Port'] || 9000);
+var $otp_item = new Array();
 
 //=============================================================================
 // 生成插件指令
@@ -80,16 +81,82 @@ OtpClient.prototype.SendMsg = function(msg) {
 OtpClient.prototype.ProcessMsg = function(msg) {
 	var action = msg["action"];
 	if (action == "Connect") {
+		this.SendMsg("View");
 		SceneManager.push(Scene_OTP);
+	};
+	if (action == "View") {
+		$otp_item.length = 0
+		var SN     = msg["SN"];
+		var typeId = msg["typeId"];
+		var id     = msg["id"];
+		var owner  = msg["owner"];
+		this.CreateOTPItem(SN, typeId, id, owner);	
+		if (this.Scene().constructor == Scene_OTP) {
+			this.Scene().activateOTPBuyWindow();
+		};
+	};
+	if (action == "Buy") {
+        $gameParty.gainItem(this.Scene()._item, 1);
+		$gameParty.loseGold(this.Scene()._item.price);
+		this.SendMsg("VView");
 	};
 	if (action == "Sell") {
 		$gameParty.loseItem(this.Scene()._item, 1)
 		this.Scene().activateOTPSellWindow();
 	};
+	if (action == "Get") {
+		this.Scene().activateOTPGetWindow();
+	};
+};
+
+OtpClient.prototype.CreateOTPItem = function(SN, typeId, id, owner) {
+	$otp_item.length = SN.length;
+    for (i=0; i<$otp_item.length; i++) {
+        var item = new OTPItem(SN[i], typeId[i], id[i], owner[i]);
+        $otp_item[i] = item;
+    };
+    return $otp_item;
 };
 
 OtpClient.prototype.Scene = function() {
 	return SceneManager._scene;
+};
+
+//=============================================================================
+// OTP Item
+//=============================================================================
+function OTPItem(SN, typeId, id, owner) {
+    this.SN = SN;
+    this.typeId = typeId;
+    this.id = id;
+    this.owner = owner;
+};
+
+//=============================================================================
+// Socket ID
+//=============================================================================
+var Morpho_Scene_Title_prototype_commandNewGame = Scene_Title.prototype.commandNewGame;
+Scene_Title.prototype.commandNewGame = function() {
+	Morpho_Scene_Title_prototype_commandNewGame.call(this);
+	this.createSocketId();
+};
+
+Scene_Title.prototype.createSocketId = function() {
+	$gameVariables.setValue(1, this.uuid());
+};
+
+Scene_Title.prototype.uuid = function() {
+    var s = [];
+    var hexDigits = "0123456789ABCDEF";
+    for (var i = 0; i < 36; i++) {
+        s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
+    };
+    s[14] = "4";
+    s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1);
+    s[8] = s[13] = s[18] = s[23] = "-";
+
+    var uuid = s.join("");
+    return uuid;
 };
 
 //=============================================================================
@@ -106,28 +173,7 @@ Window_SocketID.prototype.initialize = function(x, y) {
     var width = Graphics.boxWidth - 240;
     var height = this.fittingHeight(1);
     Window_Base.prototype.initialize.call(this, x, y, width, height);
-    this._id = null;
-    this.refresh();
-};
-
-Window_SocketID.prototype.uuid = function() {
-    var s = [];
-    var hexDigits = "0123456789abcdef";
-    for (var i = 0; i < 36; i++) {
-        s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
-    };
-    s[14] = "4";
-    s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1);
-    s[8] = s[13] = s[18] = s[23] = "-";
-
-    var uuid = s.join("");
-    return uuid;
-}
-
-Window_SocketID.prototype.refresh = function() {
-    if (this._id == null) {
-        this._id = this.uuid()
-    };
+    this._id = $gameVariables.value(1);
     this.drawIDText(this._id);
 };
 
@@ -161,6 +207,105 @@ Window_OTPCommand.prototype.makeCommandList = function() {
     this.addCommand("出售",       'sell');
     this.addCommand("下架",       'get');
     this.addCommand("取消",       'cancel');
+};
+
+//=============================================================================
+// Window OTP Buy
+//=============================================================================
+function Window_OTPBuy() {
+    this.initialize.apply(this, arguments);
+};
+
+Window_OTPBuy.prototype = Object.create(Window_Selectable.prototype);
+Window_OTPBuy.prototype.constructor = Window_OTPBuy;
+
+Window_OTPBuy.prototype.initialize = function(x, y, width, height) {
+    Window_Selectable.prototype.initialize.call(this, x, y, width, height);
+    this._otpGoods = $otp_item;
+    this._money = 0;
+    this.refresh();
+    this.select(0);
+};
+
+Window_OTPBuy.prototype.maxItems = function() {
+    return this._data ? this._data.length : 1;
+};
+
+Window_OTPBuy.prototype.item = function() {
+    return this._data[this.index()];
+};
+
+Window_OTPBuy.prototype.setMoney = function(money) {
+    this._money = money;
+    this.refresh();
+};
+
+Window_OTPBuy.prototype.isCurrentItemEnabled = function() {
+    return this.isEnabled(this._data[this.index()]);
+};
+
+Window_OTPBuy.prototype.price = function(item) {
+    return this._price[this._data.indexOf(item)] || 0;
+};
+
+Window_OTPBuy.prototype.SN = function() {
+    return this._SN[this.index()];
+};
+
+Window_OTPBuy.prototype.Owner = function() {
+    return this._owner[this.index()];
+};
+
+Window_OTPBuy.prototype.isEnabled = function(item) {
+    return (item && this.price(item) <= this._money &&
+            !$gameParty.hasMaxItems(item));
+};
+
+Window_OTPBuy.prototype.refresh = function() {
+    this.makeItemList();
+    this.createContents();
+    this.drawAllItems();
+};
+
+Window_OTPBuy.prototype.makeItemList = function() {
+    this._data = [];
+    this._SN = [];
+    this._price = [];
+    this._owner = [];
+    this._otpGoods.forEach(function(goods) {
+        var item = null;
+        switch (goods.typeId) {
+        case 0:
+            item = $dataWeapons[goods.id];
+            break;
+        case 1:
+            item = $dataArmors[goods.id];
+            break;
+        };
+        if (item && (goods.owner != $gameVariables.value(1))) {
+            this._data.push(item);
+            this._SN.push(goods.SN);
+            this._price.push(item.price);
+            this._owner.push(goods.owner);
+        };
+    }, this);
+};
+
+Window_OTPBuy.prototype.drawItem = function(index) {
+    var item = this._data[index];
+    var sn = this._SN[index];
+    var rect = this.itemRect(index);
+    var SNWidth = 48;
+    var priceWidth = 96;
+    this.changePaintOpacity(this.isEnabled(item));
+    this.drawText(sn, rect.x, rect.y, SNWidth);
+    this.drawItemName(item, rect.x + SNWidth, rect.y, rect.width - priceWidth - SNWidth);
+    this.drawText(this.price(item), rect.x + rect.width - priceWidth,rect.y, priceWidth, 'right');
+    this.changePaintOpacity(true);
+};
+
+Window_OTPBuy.prototype.updateHelp = function() {
+    this.setHelpWindowItem(this.item());
 };
 
 //=============================================================================
@@ -209,30 +354,96 @@ Window_OTPSell.prototype.maxCols = function() {
 };
 
 //=============================================================================
-// Window Choice Command
+// Window OTP Get
 //=============================================================================
-function Window_ChoiceCommand() {
+function Window_OTPGet() {
     this.initialize.apply(this, arguments);
 };
 
-Window_ChoiceCommand.prototype = Object.create(Window_HorzCommand.prototype);
-Window_ChoiceCommand.prototype.constructor = Window_ChoiceCommand;
+Window_OTPGet.prototype = Object.create(Window_Selectable.prototype);
+Window_OTPGet.prototype.constructor = Window_OTPGet;
 
-Window_ChoiceCommand.prototype.initialize = function() {
-    Window_HorzCommand.prototype.initialize.call(this, 0, 0);
+Window_OTPGet.prototype.initialize = function(x, y, width, height) {
+    Window_Selectable.prototype.initialize.call(this, x, y, width, height);
+    this._otpGoods = $otp_item;
+    this._money = 0;
+    this.refresh();
+    this.select(0);
 };
 
-Window_ChoiceCommand.prototype.windowWidth = function() {
-    return Graphics.boxWidth - 240;
+Window_OTPGet.prototype.maxItems = function() {
+    return this._data ? this._data.length : 1;
 };
 
-Window_ChoiceCommand.prototype.maxCols = function() {
-    return 2;
+Window_OTPGet.prototype.item = function() {
+    return this._data[this.index()];
 };
 
-Window_ChoiceCommand.prototype.makeCommandList = function() {
-    this.addCommand("确认",       'ok')
-    this.addCommand("取消",       'cancel');
+Window_OTPGet.prototype.setMoney = function(money) {
+    this._money = money;
+    this.refresh();
+};
+
+Window_OTPGet.prototype.isCurrentItemEnabled = function() {
+    return this.isEnabled(this._data[this.index()]);
+};
+
+Window_OTPGet.prototype.SN = function(item) {
+    return this._SN[this._data.indexOf(item)] || 0;
+};
+
+Window_OTPGet.prototype.price = function(item) {
+    return this._price[this._data.indexOf(item)] || 0;
+};
+
+Window_OTPGet.prototype.owner = function(item) {
+    return this._owner[this._data.indexOf(item)] || 0;
+};
+
+Window_OTPGet.prototype.isEnabled = function(item) {
+    return true;
+};
+
+Window_OTPGet.prototype.refresh = function() {
+    this.makeItemList();
+    this.createContents();
+    this.drawAllItems();
+};
+
+Window_OTPGet.prototype.makeItemList = function() {
+    this._data = [];
+    this._SN = [];
+    this._price = [];
+    this._owner = [];
+    this._otpGoods.forEach(function(goods) {
+        var item = null;
+        switch (goods.typeId) {
+        case 0:
+            item = $dataWeapons[goods.id];
+            break;
+        case 1:
+            item = $dataArmors[goods.id];
+            break;
+        };
+        if (item && (goods.owner == $gameVariables.value(1))) {
+            this._data.push(item);
+            this._SN.push(goods.SN);
+            this._price.push(item.price);
+            this._owner.push(goods.owner);
+        };
+    }, this);
+};
+
+Window_OTPGet.prototype.drawItem = function(index) {
+    var item = this._data[index];
+    var rect = this.itemRect(index);
+    var SNWidth = 48;
+    var priceWidth = 96;
+    this.changePaintOpacity(this.isEnabled(item));
+    this.drawText(this.SN(item), rect.x, rect.y, SNWidth);
+    this.drawItemName(item, rect.x + SNWidth, rect.y, rect.width - priceWidth - SNWidth);
+    this.drawText("已出售", rect.x + rect.width - priceWidth,rect.y, priceWidth, 'right');
+    this.changePaintOpacity(true);
 };
 
 //=============================================================================
@@ -261,6 +472,8 @@ Scene_OTP.prototype.create = function() {
     this.createOTPCommandWindow();
     this.createCategoryWindow();
     this.createOTPSellWindow();
+    this.createOTPBuyWindow();
+    this.createOTPGetWindow();
 };
 
 Scene_OTP.prototype.createGoldWindow = function() {
@@ -288,11 +501,24 @@ Scene_OTP.prototype.createSocketIDWindow = function() {
 Scene_OTP.prototype.createOTPCommandWindow = function() {
     this._otpcommandWindow = new Window_OTPCommand();
     this._otpcommandWindow.y = this._helpWindow.height;
-    //this._otpcommandWindow.setHandler('buy',     this.commandBuy.bind(this));
+    this._otpcommandWindow.setHandler('buy',     this.commandBuy.bind(this));
     this._otpcommandWindow.setHandler('sell',    this.commandSell.bind(this));
-    //this._otpcommandWindow.setHandler('get',     this.commandGet.bind(this));
+    this._otpcommandWindow.setHandler('get',     this.commandGet.bind(this));
     this._otpcommandWindow.setHandler('cancel',  this.commandCancle.bind(this));
     this.addWindow(this._otpcommandWindow);
+};
+
+Scene_OTP.prototype.createOTPBuyWindow = function() {
+    var wx = this._goldWindow.width;
+    var wy = this._helpWindow.height;
+    var ww = Graphics.boxWidth - wx;
+    var wh = Graphics.boxHeight - wy - this._goldWindow.height;
+    this._otpbuyWindow = new Window_OTPBuy(wx, wy, ww, wh);
+    this._otpbuyWindow.setHelpWindow(this._helpWindow);
+    this._otpbuyWindow.hide();
+    this._otpbuyWindow.setHandler('ok',     this.onBuyOk.bind(this));
+    this._otpbuyWindow.setHandler('cancel', this.onBuyCancel.bind(this));
+    this.addWindow(this._otpbuyWindow);
 };
 
 Scene_OTP.prototype.createCategoryWindow = function() {
@@ -321,26 +547,31 @@ Scene_OTP.prototype.createOTPSellWindow = function() {
     this.addWindow(this._otpsellWindow);
 };
 
-//=============================================================================
-// Set Commands
-//=============================================================================
-Scene_OTP.prototype.commandSell = function() {
-    this._dummyWindow.hide();
-    this._categoryWindow.show();
-    this._categoryWindow.activate();
-    this._otpsellWindow.show();
-    this._otpsellWindow.deselect();
-    this._otpsellWindow.refresh()
+Scene_OTP.prototype.createOTPGetWindow = function() {
+    var wx = this._goldWindow.width;
+    var wy = this._helpWindow.height;
+    var ww = Graphics.boxWidth - wx;
+    var wh = Graphics.boxHeight - wy - this._goldWindow.height;
+    this._otpgetWindow = new Window_OTPGet(wx, wy, ww, wh);
+    this._otpgetWindow.setHelpWindow(this._helpWindow);
+    this._otpgetWindow.hide();
+    this._otpgetWindow.setHandler('ok',     this.onGetOk.bind(this));
+    this._otpgetWindow.setHandler('cancel', this.onGetCancel.bind(this));
+    this.addWindow(this._otpgetWindow);
 };
 
-Scene_OTP.prototype.commandCancle = function() {
-    this.popScene();
-    $OtpClient.SendMsg("Close");
+//=============================================================================
+// Set Others
+//=============================================================================
+Scene_OTP.prototype.money = function() {
+    return this._goldWindow.value();
 };
 
-Scene_OTP.prototype.onCategoryOk = function() {
-    this.activateOTPSellWindow();
-    this._otpsellWindow.select(0);
+Scene_OTP.prototype.activateOTPBuyWindow = function() {
+    this._otpbuyWindow.setMoney(this.money());
+    this._otpbuyWindow.show();
+    this._otpbuyWindow.activate();
+    this._goldWindow.refresh();
 };
 
 Scene_OTP.prototype.activateOTPSellWindow = function() {
@@ -350,11 +581,68 @@ Scene_OTP.prototype.activateOTPSellWindow = function() {
     this._otpsellWindow.activate();
 };
 
+Scene_OTP.prototype.activateOTPGetWindow = function() {
+    this._otpgetWindow.setMoney(this.money());
+    this._otpgetWindow.show();
+    this._otpgetWindow.activate();
+    this._goldWindow.refresh();
+};
+
+//=============================================================================
+// Set Main Commands
+//=============================================================================
+Scene_OTP.prototype.commandBuy = function() {
+    this._dummyWindow.hide();
+    this.activateOTPBuyWindow();
+};
+
+Scene_OTP.prototype.commandSell = function() {
+    this._dummyWindow.hide();
+    this._categoryWindow.show();
+    this._categoryWindow.activate();
+    this._otpsellWindow.show();
+    this._otpsellWindow.deselect();
+    this._otpsellWindow.refresh()
+};
+
+Scene_OTP.prototype.commandGet = function() {
+    this._dummyWindow.hide();
+    this.activateOTPGetWindow();
+};
+
+Scene_OTP.prototype.commandCancle = function() {
+    this.popScene();
+    $OtpClient.SendMsg("Close");
+};
+
+//=============================================================================
+// Set Other Commands
+//=============================================================================
+Scene_OTP.prototype.onCategoryOk = function() {
+    this.activateOTPSellWindow();
+    this._otpsellWindow.select(0);
+};
+
 Scene_OTP.prototype.onCategoryCancel = function() {
     this._otpcommandWindow.activate();
     this._dummyWindow.show();
     this._categoryWindow.hide();
     this._otpsellWindow.hide();
+};
+
+Scene_OTP.prototype.onBuyOk = function() {
+	this._item = this._otpbuyWindow.item();
+	this._SN = this._otpbuyWindow.SN();
+	this._owner = this._otpbuyWindow.Owner();
+	var msg = "Buy|" + this._SN;
+	$OtpClient.SendMsg(msg);
+};
+
+Scene_OTP.prototype.onBuyCancel = function() {
+    this._otpcommandWindow.activate();
+    this._helpWindow.clear();
+    this._dummyWindow.show();
+    this._otpbuyWindow.hide();
 };
 
 Scene_OTP.prototype.onSellOk = function() {
@@ -371,9 +659,17 @@ Scene_OTP.prototype.onSellCancel = function() {
     this._categoryWindow.activate();
     this._helpWindow.clear();
 };
-//=============================================================================
-// Set Others
-//=============================================================================
-Scene_OTP.prototype.money = function() {
-    return this._goldWindow.value();
+
+Scene_OTP.prototype.onGetOk = function() {
+	this._item = this._otpbuyWindow.item();
+	this._SN = this._otpbuyWindow.SN();
+	var msg = "Get|" + this._SN;
+	$OtpClient.SendMsg(msg);
+};
+
+Scene_OTP.prototype.onGetCancel = function() {
+    this._otpcommandWindow.activate();
+    this._helpWindow.clear();
+    this._dummyWindow.show();
+    this._otpgetWindow.hide();
 };
