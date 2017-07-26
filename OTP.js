@@ -78,6 +78,9 @@ OtpClient.prototype.SendMsg = function(msg) {
 	};
 };
 
+//=============================================================================
+// 与后台数据交互处理数据
+//=============================================================================
 OtpClient.prototype.ProcessMsg = function(msg) {
 	var action = msg["action"];
 	if (action == "Connect") {
@@ -90,15 +93,21 @@ OtpClient.prototype.ProcessMsg = function(msg) {
 		var typeId = msg["typeId"];
 		var id     = msg["id"];
 		var owner  = msg["owner"];
-		this.CreateOTPItem(SN, typeId, id, owner);	
-		if (this.Scene().constructor == Scene_OTP) {
+		var status = msg["status"];
+		this.CreateOTPItem(SN, typeId, id, owner, status);	
+		if ((this.Scene().constructor == Scene_OTP) && this.Scene()) {
 			this.Scene().activateOTPBuyWindow();
 		};
 	};
 	if (action == "Buy") {
-        $gameParty.gainItem(this.Scene()._item, 1);
-		$gameParty.loseGold(this.Scene()._item.price);
-		this.SendMsg("VView");
+		var status = msg["status"];
+		if (status == 0) {
+			$gameParty.gainItem(this.Scene()._item, 1);
+			$gameParty.loseGold(this.Scene()._item.price);
+		} else {
+			alert("物品已被出售");
+		}
+		this.SendMsg("View");
 	};
 	if (action == "Sell") {
 		$gameParty.loseItem(this.Scene()._item, 1)
@@ -109,10 +118,10 @@ OtpClient.prototype.ProcessMsg = function(msg) {
 	};
 };
 
-OtpClient.prototype.CreateOTPItem = function(SN, typeId, id, owner) {
+OtpClient.prototype.CreateOTPItem = function(SN, typeId, id, owner, status) {
 	$otp_item.length = SN.length;
     for (i=0; i<$otp_item.length; i++) {
-        var item = new OTPItem(SN[i], typeId[i], id[i], owner[i]);
+        var item = new OTPItem(SN[i], typeId[i], id[i], owner[i], status[i]);
         $otp_item[i] = item;
     };
     return $otp_item;
@@ -125,11 +134,12 @@ OtpClient.prototype.Scene = function() {
 //=============================================================================
 // OTP Item
 //=============================================================================
-function OTPItem(SN, typeId, id, owner) {
-    this.SN = SN;
+function OTPItem(SN, typeId, id, owner, status) {
+    this.SN     = SN;
     this.typeId = typeId;
-    this.id = id;
-    this.owner = owner;
+    this.id     = id;
+    this.owner  = owner;
+    this.status = status;
 };
 
 //=============================================================================
@@ -268,10 +278,10 @@ Window_OTPBuy.prototype.refresh = function() {
 };
 
 Window_OTPBuy.prototype.makeItemList = function() {
-    this._data = [];
-    this._SN = [];
-    this._price = [];
-    this._owner = [];
+    this._data   = [];
+    this._SN     = [];
+    this._price  = [];
+    this._owner  = [];
     this._otpGoods.forEach(function(goods) {
         var item = null;
         switch (goods.typeId) {
@@ -282,7 +292,7 @@ Window_OTPBuy.prototype.makeItemList = function() {
             item = $dataArmors[goods.id];
             break;
         };
-        if (item && (goods.owner != $gameVariables.value(1))) {
+        if (item && (goods.owner != $gameVariables.value(1)) && goods.status == 0) {
             this._data.push(item);
             this._SN.push(goods.SN);
             this._price.push(item.price);
@@ -385,21 +395,24 @@ Window_OTPGet.prototype.setMoney = function(money) {
 };
 
 Window_OTPGet.prototype.isCurrentItemEnabled = function() {
-    return this.isEnabled(this._data[this.index()]);
+    return true;
 };
 
-Window_OTPGet.prototype.SN = function(item) {
-    return this._SN[this._data.indexOf(item)] || 0;
+Window_OTPGet.prototype.SN = function() {
+    return this._SN[this.index()];
 };
 
 Window_OTPGet.prototype.price = function(item) {
     return this._price[this._data.indexOf(item)] || 0;
 };
 
-Window_OTPGet.prototype.owner = function(item) {
-    return this._owner[this._data.indexOf(item)] || 0;
+Window_OTPGet.prototype.owner = function() {
+    return this._owner[this.index()];
 };
 
+Window_OTPGet.prototype.status = function() {
+	return this._status[this.index()];
+}
 Window_OTPGet.prototype.isEnabled = function(item) {
     return true;
 };
@@ -411,10 +424,11 @@ Window_OTPGet.prototype.refresh = function() {
 };
 
 Window_OTPGet.prototype.makeItemList = function() {
-    this._data = [];
-    this._SN = [];
-    this._price = [];
-    this._owner = [];
+    this._data   = [];
+    this._SN     = [];
+    this._price  = [];
+    this._owner  = [];
+    this._status = [];
     this._otpGoods.forEach(function(goods) {
         var item = null;
         switch (goods.typeId) {
@@ -430,6 +444,7 @@ Window_OTPGet.prototype.makeItemList = function() {
             this._SN.push(goods.SN);
             this._price.push(item.price);
             this._owner.push(goods.owner);
+            this._status.push(goods.status);
         };
     }, this);
 };
@@ -439,11 +454,10 @@ Window_OTPGet.prototype.drawItem = function(index) {
     var rect = this.itemRect(index);
     var SNWidth = 48;
     var priceWidth = 96;
-    this.changePaintOpacity(this.isEnabled(item));
+    var status = (this._status[index] == 0 ? "正在出售" : "已出售");
     this.drawText(this.SN(item), rect.x, rect.y, SNWidth);
     this.drawItemName(item, rect.x + SNWidth, rect.y, rect.width - priceWidth - SNWidth);
-    this.drawText("已出售", rect.x + rect.width - priceWidth,rect.y, priceWidth, 'right');
-    this.changePaintOpacity(true);
+    this.drawText(status, rect.x + rect.width - priceWidth,rect.y, priceWidth, 'right');
 };
 
 //=============================================================================
