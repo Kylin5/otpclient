@@ -51,85 +51,87 @@ OtpClient.prototype.initialize = function() {
 };
 
 OtpClient.prototype.CreateWebSocket = function() {
-	var url = "ws://" + WebSocket_IP + ":" + WebSocket_Port;
+    var url = "ws://" + WebSocket_IP + ":" + WebSocket_Port;
 
-	this._WebSocket = new WebSocket(url);
-	
-	this._WebSocket.onopen = function() {
-		this.send("Connect");
-	};
-	this._WebSocket.onclose = function() {
-		this.close();
-	};
-	this._WebSocket.onerror = function() {
-		alert("服务器正在维护中！")
-	};
-	this._WebSocket.onmessage = function(evt) {
-		var data = evt.data;
-		var data2json = JSON.parse(data);
-		$OtpClient.ProcessMsg(data2json);
-	};
+    this._WebSocket = new WebSocket(url);
+
+    this._WebSocket.onopen = function() {
+        this.send("Connect");
+    };
+    this._WebSocket.onclose = function() {
+        SceneManager.goto(Scene_Map);
+        this.close();
+    };
+    this._WebSocket.onerror = function() {
+        SceneManager.goto(Scene_Map);
+        $gameMessage.add("服务器正在维护中！");
+    };
+    this._WebSocket.onmessage = function(evt) {
+        var data = evt.data;
+        var data2json = JSON.parse(data);
+        $OtpClient.ProcessMsg(data2json);
+    };
 };
 
 OtpClient.prototype.SendMsg = function(msg) {
-	var msg = msg;
-	if (this._WebSocket) {
-		this._WebSocket.send(msg);
-	};
+    var msg = msg;
+    if (this._WebSocket) {
+        this._WebSocket.send(msg);
+    };
 };
 
 //=============================================================================
 // 与后台数据交互处理数据
 //=============================================================================
 OtpClient.prototype.ProcessMsg = function(msg) {
-	var action = msg["action"];
-	if (action == "Connect") {
-		this.SendMsg("View");
-		SceneManager.push(Scene_OTP);
-	};
-	if (action == "View") {
-		$otp_item.length = 0
-		var SN     = msg["SN"];
-		var typeId = msg["typeId"];
-		var id     = msg["id"];
-		var owner  = msg["owner"];
-		var status = msg["status"];
-		this.CreateOTPItem(SN, typeId, id, owner, status);	
-		if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "buy")) {
-			this.Scene().activateOTPBuyWindow();
-		} else if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "get")) {
+    var action = msg["action"];
+    if (action == "Connect") {
+        this.SendMsg("View");
+        SceneManager.push(Scene_OTP);
+    };
+    if (action == "View") {
+        $otp_item.length = 0
+        var SN     = msg["SN"];
+        var typeId = msg["typeId"];
+        var id     = msg["id"];
+        var owner  = msg["owner"];
+        var status = msg["status"];
+        this.CreateOTPItem(SN, typeId, id, owner, status);	
+        if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "buy")) {
+            this.Scene().activateOTPBuyWindow();
+        } else if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "get")) {
             this.Scene().activateOTPGetWindow();
         } else if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "sell")) {
             this.Scene().activateOTPSellWindow();
         };
-	};
-	if (action == "Buy") {
-		var status = msg["status"];
-		if (status == 0) {
-			$gameParty.gainItem(this.Scene()._item, 1);
-			$gameParty.loseGold(this.Scene()._item.price);
-		} else {
-			alert("物品已被出售");
-		}
-		this.SendMsg("View");
-	};
-	if (action == "Sell") {
-		$gameParty.loseItem(this.Scene()._item, 1)
-		this.SendMsg("View");
-	};
-	if (action == "Get") {
-		var status = msg["status"];
+    };
+    if (action == "Buy") {
+        var status = msg["status"];
+        if (status == 0) {
+            $gameParty.gainItem(this.Scene()._item, 1);
+            $gameParty.loseGold(this.Scene()._item.price);
+        } else {
+            alert("物品已被出售");
+        }
+        this.SendMsg("View");
+    };
+    if (action == "Sell") {
+        $gameParty.loseItem(this.Scene()._item, 1)
+        this.SendMsg("View");
+    };
+    if (action == "Get") {
+        var status = msg["status"];
         if (status == 0) {
             $gameParty.gainItem(this.Scene()._item, 1);
         } else if (status == 1) {
             $gameParty.gainGold(this.Scene()._item.price);
         };
         this.SendMsg("View");
-	};
+    };
 };
 
 OtpClient.prototype.CreateOTPItem = function(SN, typeId, id, owner, status) {
-	$otp_item.length = SN.length;
+    $otp_item.length = SN.length;
     for (i=0; i<$otp_item.length; i++) {
         var item = new OTPItem(SN[i], typeId[i], id[i], owner[i], status[i]);
         $otp_item[i] = item;
@@ -138,7 +140,7 @@ OtpClient.prototype.CreateOTPItem = function(SN, typeId, id, owner, status) {
 };
 
 OtpClient.prototype.Scene = function() {
-	return SceneManager._scene;
+    return SceneManager._scene;
 };
 
 //=============================================================================
@@ -157,12 +159,12 @@ function OTPItem(SN, typeId, id, owner, status) {
 //=============================================================================
 var Morpho_Scene_Title_prototype_commandNewGame = Scene_Title.prototype.commandNewGame;
 Scene_Title.prototype.commandNewGame = function() {
-	Morpho_Scene_Title_prototype_commandNewGame.call(this);
-	this.createSocketId();
+    Morpho_Scene_Title_prototype_commandNewGame.call(this);
+    this.createSocketId();
 };
 
 Scene_Title.prototype.createSocketId = function() {
-	$gameVariables.setValue(1, this.uuid());
+    $gameVariables.setValue(1, this.uuid());
 };
 
 Scene_Title.prototype.uuid = function() {
@@ -405,7 +407,7 @@ Window_OTPGet.prototype.setMoney = function(money) {
 };
 
 Window_OTPGet.prototype.isCurrentItemEnabled = function() {
-    return true;
+    return this.isEnabled(this._data[this.index()]);
 };
 
 Window_OTPGet.prototype.SN = function() {
@@ -421,10 +423,10 @@ Window_OTPGet.prototype.owner = function() {
 };
 
 Window_OTPGet.prototype.status = function() {
-	return this._status[this.index()];
+    return this._status[this.index()];
 }
 Window_OTPGet.prototype.isEnabled = function(item) {
-    return true;
+    return (item && true);
 };
 
 Window_OTPGet.prototype.refresh = function() {
@@ -655,11 +657,11 @@ Scene_OTP.prototype.onCategoryCancel = function() {
 };
 
 Scene_OTP.prototype.onBuyOk = function() {
-	this._item = this._otpbuyWindow.item();
-	this._SN = this._otpbuyWindow.SN();
-	this._owner = this._otpbuyWindow.Owner();
-	var msg = "Buy|" + this._SN;
-	$OtpClient.SendMsg(msg);
+    this._item = this._otpbuyWindow.item();
+    this._SN = this._otpbuyWindow.SN();
+    this._owner = this._otpbuyWindow.Owner();
+    var msg = "Buy|" + this._SN;
+    $OtpClient.SendMsg(msg);
 };
 
 Scene_OTP.prototype.onBuyCancel = function() {
@@ -685,10 +687,10 @@ Scene_OTP.prototype.onSellCancel = function() {
 };
 
 Scene_OTP.prototype.onGetOk = function() {
-	this._item = this._otpgetWindow.item();
-	this._SN = this._otpgetWindow.SN();
-	var msg = "Get|" + this._SN;
-	$OtpClient.SendMsg(msg);
+    this._item = this._otpgetWindow.item();
+    this._SN = this._otpgetWindow.SN();
+    var msg = "Get|" + this._SN;
+    $OtpClient.SendMsg(msg);
 };
 
 Scene_OTP.prototype.onGetCancel = function() {
