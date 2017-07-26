@@ -95,9 +95,13 @@ OtpClient.prototype.ProcessMsg = function(msg) {
 		var owner  = msg["owner"];
 		var status = msg["status"];
 		this.CreateOTPItem(SN, typeId, id, owner, status);	
-		if ((this.Scene().constructor == Scene_OTP) && this.Scene()) {
+		if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "buy")) {
 			this.Scene().activateOTPBuyWindow();
-		};
+		} else if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "get")) {
+            this.Scene().activateOTPGetWindow();
+        } else if ((this.Scene().constructor == Scene_OTP) && (this.Scene()._otpcommandWindow.currentSymbol() == "sell")) {
+            this.Scene().activateOTPSellWindow();
+        };
 	};
 	if (action == "Buy") {
 		var status = msg["status"];
@@ -111,10 +115,16 @@ OtpClient.prototype.ProcessMsg = function(msg) {
 	};
 	if (action == "Sell") {
 		$gameParty.loseItem(this.Scene()._item, 1)
-		this.Scene().activateOTPSellWindow();
+		this.SendMsg("View");
 	};
 	if (action == "Get") {
-		this.Scene().activateOTPGetWindow();
+		var status = msg["status"];
+        if (status == 0) {
+            $gameParty.gainItem(this.Scene()._item, 1);
+        } else if (status == 1) {
+            $gameParty.gainGold(this.Scene()._item.price);
+        };
+        this.SendMsg("View");
 	};
 };
 
@@ -675,8 +685,8 @@ Scene_OTP.prototype.onSellCancel = function() {
 };
 
 Scene_OTP.prototype.onGetOk = function() {
-	this._item = this._otpbuyWindow.item();
-	this._SN = this._otpbuyWindow.SN();
+	this._item = this._otpgetWindow.item();
+	this._SN = this._otpgetWindow.SN();
 	var msg = "Get|" + this._SN;
 	$OtpClient.SendMsg(msg);
 };
